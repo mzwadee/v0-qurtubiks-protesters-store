@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
 import { User, Mail, Lock, ArrowRight, Eye, EyeOff, ArrowLeft } from "lucide-react"
 import { useRouter } from "next/navigation"
 
@@ -26,8 +27,9 @@ export default function SignInPage() {
   const [localAccounts, setLocalAccounts] = useState<Customer[]>([])
   const [selectedAccount, setSelectedAccount] = useState<Customer | null>(null)
   const [error, setError] = useState("")
-  const [viewMode, setViewMode] = useState<"welcome" | "signin" | "signup">("welcome")
+  const [viewMode, setViewMode] = useState<"welcome" | "signin" | "signup" | "login-email">("welcome")
   const [initialLoading, setInitialLoading] = useState(true)
+  const [saveToDevice, setSaveToDevice] = useState(true)
 
   useEffect(() => {
     const customer = localStorage.getItem("customer")
@@ -53,10 +55,15 @@ export default function SignInPage() {
       try {
         const response = await fetch("/api/customers")
         if (response.ok) {
-          const allCustomers = await response.json()
-          if (Array.isArray(allCustomers)) {
-            const localCustomers = allCustomers.filter((c: Customer) => accountIds.includes(c.id))
-            setLocalAccounts(localCustomers)
+          const text = await response.text()
+          try {
+            const allCustomers = JSON.parse(text)
+            if (Array.isArray(allCustomers)) {
+              const localCustomers = allCustomers.filter((c: Customer) => accountIds.includes(c.id))
+              setLocalAccounts(localCustomers)
+            }
+          } catch (e) {
+            console.error("[v0] Failed to parse customers JSON:", e)
           }
         }
       } catch (fetchError) {
@@ -93,7 +100,15 @@ export default function SignInPage() {
         }),
       })
 
-      const data = await response.json()
+      const text = await response.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        setError("Server error. Please try again.")
+        setLoading(false)
+        return
+      }
 
       if (response.ok) {
         localStorage.setItem("customer", JSON.stringify(data))
@@ -103,6 +118,61 @@ export default function SignInPage() {
         router.replace("/")
       } else {
         setError(data.error || "Invalid password. Please try again.")
+      }
+    } catch (error) {
+      console.error("[v0] Sign-in failed:", error)
+      setError("An error occurred. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEmailLogin = async () => {
+    if (!email.trim() || !password.trim()) {
+      setError("Please enter your email and password")
+      return
+    }
+
+    setLoading(true)
+    setError("")
+    try {
+      const response = await fetch("/api/customers/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: email.trim().toLowerCase(),
+          password: password.trim(),
+        }),
+      })
+
+      const text = await response.text()
+      let data
+      try {
+        data = JSON.parse(text)
+      } catch (e) {
+        setError("Server error. Please try again.")
+        setLoading(false)
+        return
+      }
+
+      if (response.ok) {
+        // Save to device if checkbox is checked
+        if (saveToDevice) {
+          const localAccountIds = localStorage.getItem("qp_local_accounts")
+          const accountIds: string[] = localAccountIds ? JSON.parse(localAccountIds) : []
+          if (!accountIds.includes(data.id)) {
+            accountIds.push(data.id)
+            localStorage.setItem("qp_local_accounts", JSON.stringify(accountIds))
+          }
+        }
+
+        localStorage.setItem("customer", JSON.stringify(data))
+        localStorage.setItem("customerSession", "active")
+
+        window.dispatchEvent(new CustomEvent("customerSignedIn", { detail: data }))
+        router.replace("/")
+      } else {
+        setError(data.error || "Invalid email or password. Please try again.")
       }
     } catch (error) {
       console.error("[v0] Sign-in failed:", error)
@@ -142,14 +212,24 @@ export default function SignInPage() {
         }),
       })
 
-      const customer = await response.json()
+      const text = await response.text()
+      let customer
+      try {
+        customer = JSON.parse(text)
+      } catch (e) {
+        setError("Server error. Please try again.")
+        setLoading(false)
+        return
+      }
 
       if (response.ok) {
-        const localAccountIds = localStorage.getItem("qp_local_accounts")
-        const accountIds: string[] = localAccountIds ? JSON.parse(localAccountIds) : []
-        if (!accountIds.includes(customer.id)) {
-          accountIds.push(customer.id)
-          localStorage.setItem("qp_local_accounts", JSON.stringify(accountIds))
+        if (saveToDevice) {
+          const localAccountIds = localStorage.getItem("qp_local_accounts")
+          const accountIds: string[] = localAccountIds ? JSON.parse(localAccountIds) : []
+          if (!accountIds.includes(customer.id)) {
+            accountIds.push(customer.id)
+            localStorage.setItem("qp_local_accounts", JSON.stringify(accountIds))
+          }
         }
 
         localStorage.setItem("customer", JSON.stringify(customer))
@@ -251,12 +331,97 @@ export default function SignInPage() {
                   Sign Up
                 </Button>
                 <Button
-                  onClick={() => setViewMode("signin")}
+                  onClick={() => setViewMode("login-email")}
                   variant="outline"
                   className="w-full bg-white/5 border-white/20 text-white hover:bg-white/10 font-semibold text-lg py-6"
                 >
-                  <ArrowRight className="w-5 h-5 mr-2" />
-                  Sign In
+                  <Mail className="w-5 h-5 mr-2" />
+                  Log In
+                </Button>
+              </div>
+            </>
+          )}
+
+          {viewMode === "login-email" && !selectedAccount && (
+            <>
+              <button
+                onClick={() => setViewMode("welcome")}
+                className="flex items-center gap-2 text-white/60 hover:text-white/90 mb-4 text-sm"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Back
+              </button>
+              <h2 className="text-xl font-bold text-white mb-4">Log In with Email</h2>
+              {error && (
+                <div className="mb-4 p-3 rounded-lg bg-red-500/20 border border-red-500/30 text-red-200 text-sm">
+                  {error}
+                </div>
+              )}
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="login-email" className="text-white/90 flex items-center gap-2">
+                    <Mail className="w-4 h-4" />
+                    Email
+                  </Label>
+                  <Input
+                    id="login-email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    className="bg-white/10 border-white/20 text-white placeholder:text-white/50 focus:border-[#f48a4f] focus:ring-[#f48a4f]"
+                    disabled={loading}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="login-password" className="text-white/90 flex items-center gap-2">
+                    <Lock className="w-4 h-4" />
+                    Password
+                  </Label>
+                  <div className="relative">
+                    <Input
+                      id="login-password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      className="bg-white/10 border-white/20 text-white placeholder:text-white/50 focus:border-[#f48a4f] focus:ring-[#f48a4f] pr-10"
+                      onKeyDown={(e) => e.key === "Enter" && handleEmailLogin()}
+                      disabled={loading}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 hover:text-white/80"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="save-device-login"
+                    checked={saveToDevice}
+                    onCheckedChange={(checked) => setSaveToDevice(!!checked)}
+                    className="border-white/30"
+                  />
+                  <Label htmlFor="save-device-login" className="text-white/70 text-sm cursor-pointer">
+                    Save account to this device
+                  </Label>
+                </div>
+                <Button
+                  onClick={handleEmailLogin}
+                  disabled={!email.trim() || !password.trim() || loading}
+                  className="w-full bg-[#f48a4f] hover:brightness-110 text-[#0c2141] font-bold text-lg py-6"
+                >
+                  {loading ? "Logging In..." : "Log In"}
+                </Button>
+                <Button
+                  onClick={() => setViewMode("signup")}
+                  variant="ghost"
+                  className="w-full text-white/70 hover:text-white hover:bg-white/10"
+                >
+                  Don't have an account? Sign Up
                 </Button>
               </div>
             </>
@@ -449,6 +614,17 @@ export default function SignInPage() {
                     </button>
                   </div>
                 </div>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="save-device"
+                    checked={saveToDevice}
+                    onCheckedChange={(checked) => setSaveToDevice(!!checked)}
+                    className="border-white/30"
+                  />
+                  <Label htmlFor="save-device" className="text-white/70 text-sm cursor-pointer">
+                    Save account to this device
+                  </Label>
+                </div>
                 <Button
                   onClick={handleCreateAccount}
                   disabled={!name.trim() || !email.trim() || !password.trim() || loading}
@@ -457,11 +633,11 @@ export default function SignInPage() {
                   {loading ? "Creating Account..." : "Create Account & Sign In"}
                 </Button>
                 <Button
-                  onClick={() => setViewMode("signin")}
+                  onClick={() => setViewMode("login-email")}
                   variant="ghost"
                   className="w-full text-white/70 hover:text-white hover:bg-white/10"
                 >
-                  Already have an account? Sign In
+                  Already have an account? Log In
                 </Button>
               </div>
             </>

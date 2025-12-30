@@ -8,24 +8,44 @@ function hashPassword(password: string): string {
 
 export async function POST(request: NextRequest) {
   try {
-    const { id, password } = await request.json()
+    const body = await request.json()
+    const { id, email, password } = body
 
-    if (!id || !password) {
-      return NextResponse.json({ error: "Missing id or password" }, { status: 400 })
+    if (!password) {
+      return NextResponse.json({ error: "Missing password" }, { status: 400 })
+    }
+
+    if (!id && !email) {
+      return NextResponse.json({ error: "Missing id or email" }, { status: 400 })
     }
 
     const supabase = await createClient()
 
-    const { data: customer, error } = await supabase.from("customers").select("*").eq("id", id).single()
+    let customer
+    let error
+
+    if (email) {
+      const result = await supabase.from("customers").select("*").ilike("email", email.trim()).single()
+      customer = result.data
+      error = result.error
+    } else {
+      const result = await supabase.from("customers").select("*").eq("id", id).single()
+      customer = result.data
+      error = result.error
+    }
 
     if (error || !customer) {
       console.error("[v0] Customer not found:", error?.message)
-      return NextResponse.json({ error: "Customer not found" }, { status: 404 })
+      return NextResponse.json({ error: "Account not found. Please check your email or sign up." }, { status: 404 })
     }
 
+    // If no password set, set it now
     if (!customer.password) {
       const hashedInput = hashPassword(password)
-      const { error: updateError } = await supabase.from("customers").update({ password: hashedInput }).eq("id", id)
+      const { error: updateError } = await supabase
+        .from("customers")
+        .update({ password: hashedInput })
+        .eq("id", customer.id)
 
       if (updateError) {
         console.error("[v0] Error setting password:", updateError)
@@ -45,7 +65,7 @@ export async function POST(request: NextRequest) {
     const hashedInput = hashPassword(password)
 
     if (customer.password !== hashedInput) {
-      return NextResponse.json({ error: "Invalid password" }, { status: 401 })
+      return NextResponse.json({ error: "Invalid password. Please try again." }, { status: 401 })
     }
 
     return NextResponse.json({

@@ -26,7 +26,7 @@ export default function AdminPage() {
   }, [])
 
   const handleAuth = () => {
-    if (adminCode.trim() === "5197") {
+    if (adminCode.trim() === "51971") {
       setIsAuthenticated(true)
       setAuthDialogOpen(false)
       setError("")

@@ -4,7 +4,6 @@ import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import { cloudStorage } from "@/lib/cloud-storage"
 
 interface Customer {
   id: string
@@ -14,18 +13,6 @@ interface Customer {
   createdAt: string
   unlimited?: boolean
 }
-
-const BUILT_IN_UNLIMITED = new Set([
-  "QP MEMBER",
-  "Umar Badat",
-  "Zaeem Kathrada",
-  "Rayyan Turky",
-  "Nuuh Dawood",
-  "Muhammad Ilyaas Khan",
-  "Saad Kajee",
-  "Zuhayr Hattia",
-  "Hanzalah Arbee",
-])
 
 export function CustomerPointsManagement() {
   const [customers, setCustomers] = useState<Customer[]>([])
@@ -44,13 +31,11 @@ export function CustomerPointsManagement() {
   useEffect(() => {
     loadCustomers()
 
-    const handleCustomerSignIn = (event: any) => {
-      console.log("[v0] Customer signed in event received, refreshing points list...")
+    const handleCustomerSignIn = () => {
       setTimeout(() => loadCustomers(), 500)
     }
 
     const handleStorageChange = () => {
-      console.log("[v0] Storage changed, refreshing customer list...")
       loadCustomers()
     }
 
@@ -65,11 +50,18 @@ export function CustomerPointsManagement() {
 
   const loadCustomers = async () => {
     try {
-      console.log("[v0] Loading customers for points management...")
-      const data = await cloudStorage.getCustomers()
-      console.log("[v0] Loaded customers for points management:", data)
-      setCustomers(data || [])
-      setError("")
+      const response = await fetch("/api/customers")
+      if (response.ok) {
+        const text = await response.text()
+        try {
+          const data = JSON.parse(text)
+          setCustomers(data || [])
+          setError("")
+        } catch (e) {
+          console.error("[v0] Failed to parse customers:", e)
+          setCustomers([])
+        }
+      }
     } catch (err) {
       console.error("[v0] Failed to load customers:", err)
       setError("Failed to load customers. Please try again.")
@@ -78,35 +70,27 @@ export function CustomerPointsManagement() {
     }
   }
 
-  const saveCustomers = async (updatedCustomers: Customer[]) => {
+  const updateCustomer = async (customer: Customer) => {
     try {
       setSaving(true)
-      console.log("[v0] Saving customers:", updatedCustomers)
-
-      setCustomers(updatedCustomers)
-
       const response = await fetch("/api/customers", {
-        method: "POST",
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(updatedCustomers),
+        body: JSON.stringify(customer),
       })
 
       if (!response.ok) {
-        throw new Error(`Save failed with status: ${response.status}`)
+        const text = await response.text()
+        console.error("[v0] Failed to update customer:", text)
+        throw new Error("Failed to update")
       }
 
-      const result = await response.json()
-      console.log("[v0] Save result:", result)
-
-      localStorage.setItem("customersLastUpdate", Date.now().toString())
-      window.dispatchEvent(new Event("storage"))
-
       setError("")
-      console.log("[v0] Customers saved successfully to cloud")
+      return true
     } catch (err) {
-      console.error("[v0] Failed to save customers:", err)
+      console.error("[v0] Failed to save customer:", err)
       setError("Failed to save changes. Please try again.")
-      await loadCustomers()
+      return false
     } finally {
       setSaving(false)
     }
@@ -115,64 +99,109 @@ export function CustomerPointsManagement() {
   const addCustomer = async () => {
     setError("")
 
-    if (!newCustomer.name || !newCustomer.email || (!newCustomer.unlimited && isNaN(newCustomer.points))) {
-      setError("Please enter name, email and valid points (or tick Unlimited).")
+    if (!newCustomer.name || !newCustomer.email) {
+      setError("Please enter name and email.")
       return
     }
 
-    const newCustomerObj: Customer = {
-      id: Date.now().toString(),
-      name: newCustomer.name,
-      email: newCustomer.email,
-      points: newCustomer.unlimited ? 999999 : Math.max(0, newCustomer.points),
-      unlimited: newCustomer.unlimited,
-      createdAt: new Date().toISOString(),
+    try {
+      setSaving(true)
+      const response = await fetch("/api/customers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          adminCreate: true,
+          name: newCustomer.name,
+          email: newCustomer.email,
+          password: "temp123", // Default password for admin-created accounts
+        }),
+      })
+
+      if (response.ok) {
+        const customer = await response.json()
+
+        // Now update with points and unlimited status
+        const updatedCustomer = {
+          ...customer,
+          points: newCustomer.unlimited ? 999999 : Math.max(0, newCustomer.points),
+          unlimited: newCustomer.unlimited,
+        }
+
+        await updateCustomer(updatedCustomer)
+        await loadCustomers()
+        setNewCustomer({ name: "", email: "", points: 0, unlimited: false })
+      } else {
+        const data = await response.json()
+        setError(data.error || "Failed to add customer")
+      }
+    } catch (err) {
+      setError("Failed to add customer. Please try again.")
+    } finally {
+      setSaving(false)
     }
-
-    const updatedCustomers = [...customers, newCustomerObj]
-    await saveCustomers(updatedCustomers)
-
-    setNewCustomer({ name: "", email: "", points: 0, unlimited: false })
   }
 
-  const updateCustomer = async (index: number, field: keyof Customer, value: any) => {
-    const updatedCustomers = [...customers]
-
-    if (field === "unlimited") {
-      if (value) {
-        console.log("[v0] Setting customer to unlimited:", updatedCustomers[index].name)
-        updatedCustomers[index] = { ...updatedCustomers[index], unlimited: true, points: 999999 }
-      } else {
-        console.log("[v0] Removing unlimited from customer:", updatedCustomers[index].name)
-        updatedCustomers[index] = { ...updatedCustomers[index], unlimited: false, points: 100 }
-      }
-      // Immediately save to ensure state persists
-      await saveCustomers(updatedCustomers)
-    } else {
-      updatedCustomers[index] = { ...updatedCustomers[index], [field]: value }
-      // For other fields, save immediately too
-      await saveCustomers(updatedCustomers)
+  const handleUnlimitedChange = async (index: number, checked: boolean) => {
+    const customer = customers[index]
+    const updatedCustomer = {
+      ...customer,
+      unlimited: checked,
+      points: checked ? 999999 : 100,
     }
+
+    // Update local state immediately for responsiveness
+    const updatedCustomers = [...customers]
+    updatedCustomers[index] = updatedCustomer
+    setCustomers(updatedCustomers)
+
+    // Save to database
+    const success = await updateCustomer(updatedCustomer)
+    if (!success) {
+      // Revert on failure
+      await loadCustomers()
+    }
+  }
+
+  const handleFieldChange = async (index: number, field: keyof Customer, value: any) => {
+    const customer = customers[index]
+    const updatedCustomer = { ...customer, [field]: value }
+
+    // Update local state
+    const updatedCustomers = [...customers]
+    updatedCustomers[index] = updatedCustomer
+    setCustomers(updatedCustomers)
+  }
+
+  const handleFieldBlur = async (index: number) => {
+    const customer = customers[index]
+    await updateCustomer(customer)
   }
 
   const deleteCustomer = async (index: number) => {
-    const customerToDelete = customers[index]
-    console.log("[v0] Deleting customer:", customerToDelete)
+    const customer = customers[index]
 
-    const updatedCustomers = customers.filter((_, i) => i !== index)
-    await saveCustomers(updatedCustomers)
+    try {
+      setSaving(true)
+      const response = await fetch("/api/customers", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: customer.id }),
+      })
+
+      if (response.ok) {
+        await loadCustomers()
+      } else {
+        setError("Failed to delete customer")
+      }
+    } catch (err) {
+      setError("Failed to delete customer. Please try again.")
+    } finally {
+      setSaving(false)
+    }
   }
 
   const isUnlimited = (customer: Customer) => {
-    return customer.unlimited || BUILT_IN_UNLIMITED.has(customer.name) || customer.points >= 999999
-  }
-
-  const isBuiltInUnlimited = (customer: Customer) => {
-    return BUILT_IN_UNLIMITED.has(customer.name)
-  }
-
-  const canToggleUnlimited = (customer: Customer) => {
-    return !BUILT_IN_UNLIMITED.has(customer.name)
+    return customer.unlimited || customer.points >= 999999
   }
 
   if (loading) {
@@ -189,7 +218,7 @@ export function CustomerPointsManagement() {
 
       {saving && (
         <div className="rounded-2xl bg-emerald-500/20 ring-1 ring-emerald-500/30 p-4 mb-4">
-          <p className="text-emerald-200 text-sm">✅ Saving changes to cloud...</p>
+          <p className="text-emerald-200 text-sm">Saving changes...</p>
         </div>
       )}
 
@@ -258,11 +287,12 @@ export function CustomerPointsManagement() {
               </tr>
             ) : (
               customers.map((customer, index) => (
-                <tr key={`${customer.id}-${index}`}>
+                <tr key={customer.id}>
                   <td className="px-4 py-3">
                     <Input
                       value={customer.name}
-                      onChange={(e) => updateCustomer(index, "name", e.target.value)}
+                      onChange={(e) => handleFieldChange(index, "name", e.target.value)}
+                      onBlur={() => handleFieldBlur(index)}
                       className="bg-white/10 border-white/20 text-white w-48"
                       disabled={saving}
                     />
@@ -270,7 +300,8 @@ export function CustomerPointsManagement() {
                   <td className="px-4 py-3">
                     <Input
                       value={customer.email}
-                      onChange={(e) => updateCustomer(index, "email", e.target.value)}
+                      onChange={(e) => handleFieldChange(index, "email", e.target.value)}
+                      onBlur={() => handleFieldBlur(index)}
                       className="bg-white/10 border-white/20 text-white w-48"
                       disabled={saving}
                     />
@@ -279,8 +310,10 @@ export function CustomerPointsManagement() {
                     <Input
                       type="number"
                       min="0"
-                      value={isUnlimited(customer) ? "∞" : customer.points}
-                      onChange={(e) => updateCustomer(index, "points", Number(e.target.value))}
+                      value={isUnlimited(customer) ? "" : customer.points}
+                      placeholder={isUnlimited(customer) ? "∞" : "0"}
+                      onChange={(e) => handleFieldChange(index, "points", Number(e.target.value))}
+                      onBlur={() => handleFieldBlur(index)}
                       className="bg-white/10 border-white/20 text-white w-28"
                       disabled={isUnlimited(customer) || saving}
                     />
@@ -289,13 +322,11 @@ export function CustomerPointsManagement() {
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         checked={isUnlimited(customer)}
-                        onCheckedChange={(checked) => updateCustomer(index, "unlimited", !!checked)}
+                        onCheckedChange={(checked) => handleUnlimitedChange(index, !!checked)}
                         className="border-white/30"
-                        disabled={!canToggleUnlimited(customer) || saving}
+                        disabled={saving}
                       />
-                      <span className="text-sm text-white">
-                        {isBuiltInUnlimited(customer) ? "Built-in" : isUnlimited(customer) ? "Yes" : "No"}
-                      </span>
+                      <span className="text-sm text-white">{isUnlimited(customer) ? "Yes" : "No"}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3">
