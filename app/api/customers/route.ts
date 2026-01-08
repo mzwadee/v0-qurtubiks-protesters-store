@@ -15,68 +15,26 @@ function hashPassword(password: string): string {
   return "qxpw_" + Buffer.from(normalized).toString("base64")
 }
 
-async function ensureCustomersTable() {
-  const supabase = createAdminClient()
-
-  // Try to query the table
-  const { error } = await supabase.from("customers").select("id").limit(1)
-
-  // If table doesn't exist, create it
-  if (
-    error &&
-    (error.message.includes("relation") || error.message.includes("does not exist") || error.code === "42P01")
-  ) {
-    console.log("[v0] Creating customers table...")
-
-    // Use raw SQL to create table
-    const { error: createError } = await supabase.from("_").select("*").limit(0) // This will fail, but we're just testing connection
-
-    // Try direct REST API call to create table via SQL
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/`, {
-        method: "POST",
-        headers: {
-          apikey: process.env.SUPABASE_SERVICE_ROLE_KEY!,
-          Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}`,
-          "Content-Type": "application/json",
-        },
-      })
-    } catch (e) {
-      // Ignore - we'll handle this differently
-    }
-
-    return false
-  }
-
-  return !error
-}
-
 export async function GET(request: NextRequest) {
   try {
     const supabase = createAdminClient()
 
-    let customers
-    try {
-      const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: true })
+    const { data, error } = await supabase
+      .from("customers")
+      .select("id, name, email, points, unlimited, created_at")
+      .order("created_at", { ascending: true })
 
-      if (error) {
-        console.error("[v0] Supabase error:", error.message, error.code)
-        // Table doesn't exist yet - return empty array
-        return NextResponse.json([])
-      }
-
-      customers = data
-    } catch (parseError) {
-      console.error("[v0] Error parsing Supabase response:", parseError)
-      // If Supabase returns invalid JSON (HTML error), return empty array
+    if (error) {
+      console.error("[v0] Supabase error:", error)
+      // Return empty array instead of error for graceful degradation
       return NextResponse.json([])
     }
 
-    if (!customers || customers.length === 0) {
+    if (!data || data.length === 0) {
       return NextResponse.json([])
     }
 
-    const apiCustomers: Customer[] = customers.map((c) => ({
+    const apiCustomers: Customer[] = data.map((c: any) => ({
       id: c.id,
       name: c.name,
       email: c.email,
@@ -88,7 +46,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(apiCustomers)
   } catch (error) {
     console.error("[v0] Error loading customers:", error)
-    // Return empty array on any error instead of failing
     return NextResponse.json([])
   }
 }
@@ -98,22 +55,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const supabase = createAdminClient()
 
-    const { name, email, password, adminCreate } = body
+    const { name, email, password } = body
 
     if (!name || !email || !password) {
       return NextResponse.json({ error: "Name, email, and password are required" }, { status: 400 })
     }
 
-    // Check if email already exists
-    const { data: existing, error: checkError } = await supabase
-      .from("customers")
-      .select("id")
-      .ilike("email", email.trim())
-      .maybeSingle()
-
-    if (checkError && !checkError.message.includes("relation")) {
-      console.error("[v0] Error checking existing customer:", checkError)
-    }
+    const { data: existing } = await supabase.from("customers").select("id").ilike("email", email.trim()).maybeSingle()
 
     if (existing) {
       return NextResponse.json({ error: "An account with this email already exists" }, { status: 409 })
@@ -138,7 +86,7 @@ export async function POST(request: NextRequest) {
 
     if (insertError) {
       console.error("[v0] Error creating customer:", insertError)
-      return NextResponse.json({ error: "Database error: " + insertError.message }, { status: 500 })
+      return NextResponse.json({ error: "Failed to create account" }, { status: 500 })
     }
 
     return NextResponse.json({
@@ -158,12 +106,11 @@ export async function POST(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   try {
     const updatedCustomer = await request.json()
+    const supabase = createAdminClient()
 
     if (!updatedCustomer.id || !updatedCustomer.name) {
       return NextResponse.json({ error: "Invalid customer data" }, { status: 400 })
     }
-
-    const supabase = createAdminClient()
 
     const updateData: any = {
       name: updatedCustomer.name,
@@ -180,7 +127,7 @@ export async function PUT(request: NextRequest) {
 
     if (error) {
       console.error("[v0] Error updating customer:", error)
-      return NextResponse.json({ error: "Failed to update customer: " + error.message }, { status: 500 })
+      return NextResponse.json({ error: "Failed to update customer" }, { status: 500 })
     }
 
     return NextResponse.json({ success: true, customer: updatedCustomer })
@@ -193,18 +140,17 @@ export async function PUT(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const { id } = await request.json()
+    const supabase = createAdminClient()
 
     if (!id) {
       return NextResponse.json({ error: "Invalid customer data" }, { status: 400 })
     }
 
-    const supabase = createAdminClient()
-
     const { error } = await supabase.from("customers").delete().eq("id", id)
 
     if (error) {
       console.error("[v0] Error deleting customer:", error)
-      return NextResponse.json({ error: "Failed to delete customer: " + error.message }, { status: 500 })
+      return NextResponse.json({ error: "Failed to delete customer" }, { status: 500 })
     }
 
     return NextResponse.json({ success: true })
