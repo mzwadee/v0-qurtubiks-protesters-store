@@ -56,14 +56,19 @@ export default function SignInPage() {
         const response = await fetch("/api/customers")
         if (response.ok) {
           const text = await response.text()
+          if (!text) {
+            setInitialLoading(false)
+            return
+          }
           try {
             const allCustomers = JSON.parse(text)
             if (Array.isArray(allCustomers)) {
               const localCustomers = allCustomers.filter((c: Customer) => accountIds.includes(c.id))
               setLocalAccounts(localCustomers)
             }
-          } catch (e) {
-            console.error("[v0] Failed to parse customers JSON:", e)
+          } catch (parseError) {
+            console.error("[v0] Failed to parse customers JSON:", parseError)
+            console.error("[v0] Response text:", text.substring(0, 100))
           }
         }
       } catch (fetchError) {

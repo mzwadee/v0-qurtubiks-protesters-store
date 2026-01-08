@@ -55,20 +55,20 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createAdminClient()
 
-    const { data: customers, error } = await supabase
-      .from("customers")
-      .select("*")
-      .order("created_at", { ascending: true })
+    let customers
+    try {
+      const { data, error } = await supabase.from("customers").select("*").order("created_at", { ascending: true })
 
-    if (error) {
-      console.error("[v0] Supabase error:", error.message, error.code)
-
-      // If table doesn't exist, return empty array
-      if (error.message.includes("relation") || error.message.includes("does not exist") || error.code === "42P01") {
-        console.log("[v0] Customers table does not exist yet - returning empty array")
+      if (error) {
+        console.error("[v0] Supabase error:", error.message, error.code)
+        // Table doesn't exist yet - return empty array
         return NextResponse.json([])
       }
 
+      customers = data
+    } catch (parseError) {
+      console.error("[v0] Error parsing Supabase response:", parseError)
+      // If Supabase returns invalid JSON (HTML error), return empty array
       return NextResponse.json([])
     }
 
@@ -88,6 +88,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(apiCustomers)
   } catch (error) {
     console.error("[v0] Error loading customers:", error)
+    // Return empty array on any error instead of failing
     return NextResponse.json([])
   }
 }
