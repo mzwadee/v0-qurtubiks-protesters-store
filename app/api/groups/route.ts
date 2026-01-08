@@ -1,18 +1,14 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
-    // Get all groups with their members
-    const { data: groups, error: groupsError } = await supabase
-      .from("message_groups")
-      .select("*")
-      .order("created_at", { ascending: false })
+    const { data: groups, error } = await supabase.from("groups").select("*").order("created_at", { ascending: false })
 
-    if (groupsError) {
-      console.error("[v0] Error loading groups:", groupsError)
+    if (error) {
+      console.error("[v0] Error loading groups:", error.message)
       return NextResponse.json([])
     }
 
@@ -20,24 +16,14 @@ export async function GET() {
       return NextResponse.json([])
     }
 
-    // Get members for each group
-    const groupsWithMembers = await Promise.all(
-      groups.map(async (group) => {
-        const { data: members } = await supabase
-          .from("message_group_members")
-          .select("customer_id")
-          .eq("group_id", group.id)
+    const formattedGroups = groups.map((group) => ({
+      id: group.id,
+      name: group.name,
+      memberIds: group.member_ids || [],
+      createdAt: group.created_at,
+    }))
 
-        return {
-          id: group.id,
-          name: group.name,
-          memberIds: members?.map((m) => m.customer_id) || [],
-          createdAt: group.created_at,
-        }
-      }),
-    )
-
-    return NextResponse.json(groupsWithMembers)
+    return NextResponse.json(formattedGroups)
   } catch (error) {
     console.error("[v0] Error loading groups:", error)
     return NextResponse.json([])
@@ -52,29 +38,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Name and members are required" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const groupId = Date.now().toString()
 
-    // Create the group
-    const { error: groupError } = await supabase.from("message_groups").insert([{ id: groupId, name }])
+    const { error } = await supabase.from("groups").insert([
+      {
+        id: groupId,
+        name,
+        member_ids: memberIds,
+      },
+    ])
 
-    if (groupError) {
-      console.error("[v0] Error creating group:", groupError)
+    if (error) {
+      console.error("[v0] Error creating group:", error)
       return NextResponse.json({ error: "Failed to create group" }, { status: 500 })
-    }
-
-    // Add members
-    const memberInserts = memberIds.map((customerId: string) => ({
-      id: `${groupId}_${customerId}`,
-      group_id: groupId,
-      customer_id: customerId,
-    }))
-
-    const { error: membersError } = await supabase.from("message_group_members").insert(memberInserts)
-
-    if (membersError) {
-      console.error("[v0] Error adding group members:", membersError)
     }
 
     return NextResponse.json({ id: groupId, name, memberIds })
@@ -92,10 +70,9 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Group ID is required" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
-    // Delete group (members will be cascade deleted)
-    const { error } = await supabase.from("message_groups").delete().eq("id", id)
+    const { error } = await supabase.from("groups").delete().eq("id", id)
 
     if (error) {
       console.error("[v0] Error deleting group:", error)

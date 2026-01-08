@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { type NextRequest, NextResponse } from "next/server"
 
 export async function GET(request: NextRequest) {
@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const customerId = searchParams.get("customerId")
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     if (customerId) {
       const { data: messages, error } = await supabase
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
         .order("created_at", { ascending: false })
 
       if (error) {
-        console.error("[v0] Error loading messages:", error)
+        console.error("[v0] Error loading messages:", error.message)
         return NextResponse.json([])
       }
 
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
         .order("created_at", { ascending: false })
 
       if (error) {
-        console.error("[v0] Error loading all messages:", error)
+        console.error("[v0] Error loading all messages:", error.message)
         return NextResponse.json([])
       }
 
@@ -49,9 +49,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
-    // Create a message for each customer
     const messages = customerIds.map((customerId: string, index: number) => ({
       id: `${Date.now()}_${index}`,
       customer_id: customerId,
@@ -67,7 +66,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to create messages" }, { status: 500 })
     }
 
-    console.log("[v0] Created", messages.length, "messages")
     return NextResponse.json(data)
   } catch (error) {
     console.error("[v0] Error in messages POST:", error)
@@ -84,7 +82,7 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Missing message ID" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data, error } = await supabase.from("messages").update({ read }).eq("id", id).select().single()
 
@@ -93,7 +91,6 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: "Failed to update message" }, { status: 500 })
     }
 
-    console.log("[v0] Updated message read status:", id, read)
     return NextResponse.json(data)
   } catch (error) {
     console.error("[v0] Error in messages PUT:", error)

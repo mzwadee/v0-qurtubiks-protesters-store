@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { type NextRequest, NextResponse } from "next/server"
 
 export interface Product {
@@ -35,7 +35,7 @@ const DEFAULT_PRODUCTS: Product[] = [
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data: products, error } = await supabase
       .from("products")
@@ -43,26 +43,13 @@ export async function GET() {
       .order("created_at", { ascending: true })
 
     if (error) {
-      console.error("[v0] Error loading products from Supabase:", error)
+      console.error("[v0] Error loading products from Supabase:", error.message)
+      // Return defaults if table doesn't exist
       return NextResponse.json(DEFAULT_PRODUCTS)
     }
 
     if (!products || products.length === 0) {
-      console.log("[v0] No products found, initializing with defaults")
-
-      const productsToInsert = DEFAULT_PRODUCTS.map((p) => ({
-        id: p.sku,
-        name: p.name,
-        price: p.price,
-        image: "/placeholder.svg?height=400&width=400",
-      }))
-
-      const { error: insertError } = await supabase.from("products").insert(productsToInsert)
-
-      if (insertError) {
-        console.error("[v0] Error inserting default products:", insertError)
-      }
-
+      console.log("[v0] No products found, returning defaults")
       return NextResponse.json(DEFAULT_PRODUCTS)
     }
 
@@ -86,7 +73,7 @@ export async function POST(request: NextRequest) {
     const products: Product[] = await request.json()
     console.log("[v0] Saving", products.length, "products to Supabase")
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { error: deleteError } = await supabase.from("products").delete().neq("id", "")
 

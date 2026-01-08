@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import { type NextRequest, NextResponse } from "next/server"
 
 export interface Order {
@@ -21,16 +21,15 @@ export interface Order {
 
 export async function GET() {
   try {
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { data: orders, error } = await supabase.from("orders").select("*").order("created_at", { ascending: false })
 
     if (error) {
-      console.error("[v0] Error loading orders from Supabase:", error)
+      console.error("[v0] Error loading orders from Supabase:", error.message)
       return NextResponse.json([])
     }
 
-    // Convert database format to API format
     const apiOrders: Order[] = (orders || []).map((o) => ({
       id: o.id,
       at: o.created_at,
@@ -44,7 +43,6 @@ export async function GET() {
       status: o.status as "open" | "completed",
     }))
 
-    console.log("[v0] Loaded", apiOrders.length, "orders from Supabase")
     return NextResponse.json(apiOrders)
   } catch (error) {
     console.error("[v0] Error fetching orders:", error)
@@ -57,7 +55,7 @@ export async function POST(request: NextRequest) {
     const orders: Order[] = await request.json()
     console.log("[v0] Saving", orders.length, "orders to Supabase")
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     const { error: deleteError } = await supabase.from("orders").delete().neq("id", "")
 
@@ -66,7 +64,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to delete orders" }, { status: 500 })
     }
 
-    // Convert API format to database format
     const dbOrders = orders.map((o) => ({
       id: o.id,
       customer_id: o.customerId || "",
@@ -83,7 +80,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to save orders" }, { status: 500 })
     }
 
-    console.log("[v0] Successfully saved", orders.length, "orders to Supabase")
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Error saving orders:", error)

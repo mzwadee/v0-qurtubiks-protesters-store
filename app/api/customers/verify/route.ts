@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 function hashPassword(password: string): string {
   const normalized = password.trim()
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing id or email" }, { status: 400 })
     }
 
-    const supabase = await createClient()
+    const supabase = createAdminClient()
 
     let customer
     let error
@@ -35,6 +35,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (error || !customer) {
+      if (error?.message?.includes("relation") || error?.code === "42P01") {
+        return NextResponse.json({ error: "Database not initialized. Please try again." }, { status: 503 })
+      }
       console.error("[v0] Customer not found:", error?.message)
       return NextResponse.json({ error: "Account not found. Please check your email or sign up." }, { status: 404 })
     }
