@@ -13,7 +13,8 @@ interface Product {
   name: string
   price: number
   desc: string
-  inStock: boolean
+  status: "in_stock" | "out_of_stock" | "coming_soon"
+  imageUrl?: string
 }
 
 interface CartItem {
@@ -107,7 +108,11 @@ export default function HomePage() {
   const loadProducts = async () => {
     try {
       const data = await cloudStorage.getProducts()
-      setProducts(data)
+      const products = (data as any[]).map((p) => ({
+        ...p,
+        status: p.status || (p.inStock ? "in_stock" : "out_of_stock"),
+      }))
+      setProducts(products)
     } catch (err) {
       console.error("Failed to load products:", err)
       setProducts([])
@@ -253,43 +258,68 @@ export default function HomePage() {
           ) : (
             <div className="grid md:grid-cols-3 gap-6">
               {products.map((product) => (
-                <div
-                  key={product.sku}
-                  className="relative rounded-2xl p-5 bg-white/10 ring-1 ring-white/15 backdrop-blur"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <h3 className="font-bold truncate">{product.name || "—"}</h3>
-                      {product.desc && (
-                        <p className="text-white/90 text-sm md:text-base mt-1 break-words">{product.desc}</p>
-                      )}
-                      <p className="text-white/70 text-xs mt-1 truncate">SKU: {product.sku || "—"}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold ${
-                            product.inStock ? "bg-emerald-500/20 text-emerald-200" : "bg-rose-500/20 text-rose-200"
-                          }`}
-                        >
-                          {product.inStock ? "In stock" : "Out of stock"}
-                        </span>
+                <div key={product.sku} className="relative rounded-2xl overflow-hidden group">
+                  <div className="relative h-64 bg-gradient-to-br from-[#f48a4f] to-[#99074E] overflow-hidden">
+                    {product.imageUrl ? (
+                      <img
+                        src={product.imageUrl || "/placeholder.svg"}
+                        alt={product.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-white/30 text-sm">
+                        No image
                       </div>
+                    )}
+                    <div className="absolute top-3 right-3">
+                      <span
+                        className={`inline-flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold backdrop-blur ${
+                          product.status === "in_stock"
+                            ? "bg-emerald-500/80 text-emerald-50"
+                            : product.status === "out_of_stock"
+                              ? "bg-rose-500/80 text-rose-50"
+                              : "bg-blue-500/80 text-blue-50"
+                        }`}
+                      >
+                        {product.status === "in_stock"
+                          ? "In Stock"
+                          : product.status === "out_of_stock"
+                            ? "Out of Stock"
+                            : "Coming Soon"}
+                      </span>
                     </div>
-                    <span className="text-[#f48a4f] font-extrabold whitespace-nowrap">
-                      {Number(product.price || 0)} pts
-                    </span>
                   </div>
-                  <div className="mt-4 flex items-center justify-end">
-                    <Button
-                      onClick={() => addToCart(product)}
-                      disabled={!product.inStock}
-                      className={`font-semibold px-4 py-2 rounded-xl transition ${
-                        product.inStock
-                          ? "bg-[#f48a4f] text-[#0c2141] hover:brightness-110"
-                          : "bg-white/10 text-white/40 cursor-not-allowed"
-                      }`}
-                    >
-                      {product.inStock ? "Add" : "Unavailable"}
-                    </Button>
+
+                  <div className="p-5 bg-white/10 ring-1 ring-white/15 backdrop-blur">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <h3 className="font-bold truncate">{product.name || "—"}</h3>
+                        {product.desc && (
+                          <p className="text-white/90 text-sm md:text-base mt-1 break-words">{product.desc}</p>
+                        )}
+                        <p className="text-white/70 text-xs mt-1 truncate">SKU: {product.sku || "—"}</p>
+                      </div>
+                      <span className="text-[#f48a4f] font-extrabold whitespace-nowrap">
+                        {Number(product.price || 0)} pts
+                      </span>
+                    </div>
+                    <div className="mt-4 flex items-center justify-end">
+                      <Button
+                        onClick={() => addToCart(product)}
+                        disabled={product.status !== "in_stock"}
+                        className={`font-semibold px-4 py-2 rounded-xl transition ${
+                          product.status === "in_stock"
+                            ? "bg-[#f48a4f] text-[#0c2141] hover:brightness-110"
+                            : "bg-white/10 text-white/40 cursor-not-allowed"
+                        }`}
+                      >
+                        {product.status === "in_stock"
+                          ? "Add"
+                          : product.status === "out_of_stock"
+                            ? "Out of Stock"
+                            : "Coming Soon"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
               ))}

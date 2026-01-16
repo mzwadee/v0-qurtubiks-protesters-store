@@ -6,7 +6,8 @@ export interface Product {
   name: string
   price: number
   desc: string
-  inStock: boolean
+  status: "in_stock" | "out_of_stock" | "coming_soon"
+  imageUrl?: string
 }
 
 const DEFAULT_PRODUCTS: Product[] = [
@@ -15,21 +16,21 @@ const DEFAULT_PRODUCTS: Product[] = [
     name: "QurtubloX T-Shirt",
     price: 25,
     desc: "Official QurtubloX merchandise - premium cotton t-shirt",
-    inStock: true,
+    status: "in_stock",
   },
   {
     sku: "QP-HOODIE-001",
     name: "QurtubloX Hoodie",
     price: 45,
     desc: "Warm and comfortable hoodie with QurtubloX logo",
-    inStock: true,
+    status: "in_stock",
   },
   {
     sku: "QP-CAP-001",
     name: "QurtubloX Cap",
     price: 15,
     desc: "Stylish cap representing the movement",
-    inStock: true,
+    status: "coming_soon",
   },
 ]
 
@@ -44,7 +45,6 @@ export async function GET() {
 
     if (error) {
       console.error("[v0] Error loading products from Supabase:", error.message)
-      // Return defaults if table doesn't exist
       return NextResponse.json(DEFAULT_PRODUCTS)
     }
 
@@ -58,7 +58,8 @@ export async function GET() {
       name: p.name || "",
       price: Number(p.price) || 0,
       desc: p.description || "",
-      inStock: p.stock !== undefined ? p.stock > 0 : true,
+      status: (p.status || "in_stock") as "in_stock" | "out_of_stock" | "coming_soon",
+      imageUrl: p.image_url || p.image,
     }))
 
     return NextResponse.json(apiProducts)
@@ -86,7 +87,10 @@ export async function POST(request: NextRequest) {
       id: p.sku,
       name: p.name,
       price: p.price,
-      image: "/placeholder.svg?height=400&width=400",
+      description: p.desc,
+      status: p.status,
+      image_url: p.imageUrl || "/placeholder.svg?height=400&width=400",
+      image: p.imageUrl || "/placeholder.svg?height=400&width=400",
     }))
 
     const { error: insertError } = await supabase.from("products").insert(dbProducts)
