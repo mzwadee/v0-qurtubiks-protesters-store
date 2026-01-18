@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { cloudStorage } from "@/lib/cloud-storage"
 import { put } from "@vercel/blob"
 
 interface Product {
@@ -38,7 +37,9 @@ export function ProductManagement() {
   const loadProducts = async () => {
     try {
       setLoading(true)
-      const data = await cloudStorage.getProducts()
+      const response = await fetch("/api/products", { method: "GET" })
+      if (!response.ok) throw new Error("Failed to load products")
+      const data = await response.json()
       const products = (data as any[]).map((p) => ({
         ...p,
         status: p.status || (p.inStock ? "in_stock" : "out_of_stock"),
@@ -57,7 +58,12 @@ export function ProductManagement() {
     try {
       setSaving(true)
       setProducts(updatedProducts)
-      await cloudStorage.saveProducts(updatedProducts as any)
+      const response = await fetch("/api/products", { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedProducts)
+      })
+      if (!response.ok) throw new Error("Failed to save products")
       window.dispatchEvent(new CustomEvent("productsUpdated", { detail: updatedProducts }))
       setError("")
     } catch (err) {
