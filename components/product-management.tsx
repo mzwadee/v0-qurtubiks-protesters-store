@@ -78,13 +78,15 @@ export function ProductManagement() {
   const handleImageUpload = async (index: number, file: File) => {
     try {
       setUploadingIndex(index)
+      console.log("[v0] Uploading image:", file.name)
       const blob = await put(`products/${Date.now()}-${file.name}`, file, { access: "public" })
+      console.log("[v0] Image uploaded:", blob.url)
       const updatedProducts = [...products]
       updatedProducts[index].imageUrl = blob.url
       setProducts(updatedProducts)
       await saveProducts(updatedProducts)
     } catch (err) {
-      console.error("Failed to upload image:", err)
+      console.error("[v0] Failed to upload image:", err)
       setError("Failed to upload image")
     } finally {
       setUploadingIndex(null)
@@ -105,13 +107,22 @@ export function ProductManagement() {
       return
     }
 
+    let imageUrl = newProduct.imageUrl
+    
+    // If it's a blob URL, we need to keep it as is for now
+    // The server will handle it
+    if (newProduct.imageUrl && newProduct.imageUrl.startsWith("blob:")) {
+      // For now, don't upload blob URLs
+      imageUrl = ""
+    }
+
     const productToAdd: Product = {
       sku: newProduct.sku.trim(),
       name: newProduct.name.trim(),
       price: Math.max(0, newProduct.price),
       desc: newProduct.desc.trim(),
       status: newProduct.status,
-      imageUrl: newProduct.imageUrl,
+      imageUrl: imageUrl,
     }
 
     const updatedProducts = [...products, productToAdd]

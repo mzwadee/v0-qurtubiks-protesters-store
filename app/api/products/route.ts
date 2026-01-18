@@ -10,29 +10,7 @@ export interface Product {
   imageUrl?: string
 }
 
-const DEFAULT_PRODUCTS: Product[] = [
-  {
-    sku: "QP-SHIRT-001",
-    name: "QurtubloX T-Shirt",
-    price: 25,
-    desc: "Official QurtubloX merchandise - premium cotton t-shirt",
-    status: "in_stock",
-  },
-  {
-    sku: "QP-HOODIE-001",
-    name: "QurtubloX Hoodie",
-    price: 45,
-    desc: "Warm and comfortable hoodie with QurtubloX logo",
-    status: "in_stock",
-  },
-  {
-    sku: "QP-CAP-001",
-    name: "QurtubloX Cap",
-    price: 15,
-    desc: "Stylish cap representing the movement",
-    status: "coming_soon",
-  },
-]
+const DEFAULT_PRODUCTS: Product[] = []
 
 export async function GET() {
   try {
@@ -85,12 +63,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to delete products" }, { status: 500 })
     }
 
-    // Insert new products
+    // Insert new products - only include columns that exist in the database
     const dbProducts = products.map((p) => ({
       id: p.sku,
       name: p.name,
       price: p.price,
-      description: p.desc,
       status: p.status,
       image_url: p.imageUrl || "",
       image: p.imageUrl || "",
