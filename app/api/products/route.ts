@@ -62,6 +62,7 @@ export async function GET() {
       imageUrl: p.image_url || p.image,
     }))
 
+    console.log("[v0] Successfully fetched", apiProducts.length, "products from Supabase")
     return NextResponse.json(apiProducts)
   } catch (error) {
     console.error("[v0] Error fetching products:", error)
@@ -76,6 +77,7 @@ export async function POST(request: NextRequest) {
 
     const supabase = createAdminClient()
 
+    // Delete all existing products
     const { error: deleteError } = await supabase.from("products").delete().neq("id", "")
 
     if (deleteError) {
@@ -83,25 +85,29 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Failed to delete products" }, { status: 500 })
     }
 
+    // Insert new products
     const dbProducts = products.map((p) => ({
       id: p.sku,
       name: p.name,
       price: p.price,
       description: p.desc,
       status: p.status,
-      image_url: p.imageUrl || "/placeholder.svg?height=400&width=400",
-      image: p.imageUrl || "/placeholder.svg?height=400&width=400",
+      image_url: p.imageUrl || "",
+      image: p.imageUrl || "",
     }))
 
-    const { error: insertError } = await supabase.from("products").insert(dbProducts)
+    const { error: insertError, data: insertedData } = await supabase
+      .from("products")
+      .insert(dbProducts)
+      .select()
 
     if (insertError) {
-      console.error("[v0] Error inserting products:", insertError)
+      console.error("[v0] Error inserting products:", insertError.message)
       return NextResponse.json({ error: "Failed to save products" }, { status: 500 })
     }
 
     console.log("[v0] Successfully saved", products.length, "products to Supabase")
-    return NextResponse.json({ success: true })
+    return NextResponse.json({ success: true, data: insertedData })
   } catch (error) {
     console.error("[v0] Error saving products:", error)
     return NextResponse.json({ error: "Failed to save products" }, { status: 500 })
