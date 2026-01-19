@@ -28,6 +28,7 @@ export function ProductManagement() {
     desc: "",
     status: "in_stock" as const,
     imageUrl: "",
+    imageFile: null as File | null,
   })
 
   useEffect(() => {
@@ -107,13 +108,21 @@ export function ProductManagement() {
       return
     }
 
-    let imageUrl = newProduct.imageUrl
+    let imageUrl = ""
     
-    // If it's a blob URL, we need to keep it as is for now
-    // The server will handle it
-    if (newProduct.imageUrl && newProduct.imageUrl.startsWith("blob:")) {
-      // For now, don't upload blob URLs
-      imageUrl = ""
+    // Upload image if provided
+    if (newProduct.imageFile) {
+      try {
+        setUploadingIndex(-1) // Indicate uploading
+        console.log("[v0] Uploading new product image:", newProduct.imageFile.name)
+        const blob = await put(`products/${Date.now()}-${newProduct.imageFile.name}`, newProduct.imageFile, { access: "public" })
+        imageUrl = blob.url
+        console.log("[v0] New product image uploaded:", imageUrl)
+      } catch (err) {
+        console.error("[v0] Failed to upload new product image:", err)
+        setError("Failed to upload image. Product may be saved without image.")
+        setUploadingIndex(null)
+      }
     }
 
     const productToAdd: Product = {
@@ -127,7 +136,8 @@ export function ProductManagement() {
 
     const updatedProducts = [...products, productToAdd]
     await saveProducts(updatedProducts)
-    setNewProduct({ sku: "", name: "", price: 0, desc: "", status: "in_stock", imageUrl: "" })
+    setNewProduct({ sku: "", name: "", price: 0, desc: "", status: "in_stock", imageUrl: "", imageFile: null })
+    setUploadingIndex(null)
   }
 
   const updateProduct = async (index: number, field: keyof Product, value: any) => {
@@ -211,7 +221,12 @@ export function ProductManagement() {
               className="hidden"
               onChange={(e) => {
                 if (e.target.files?.[0]) {
-                  setNewProduct({ ...newProduct, imageUrl: URL.createObjectURL(e.target.files[0]) })
+                  const file = e.target.files[0]
+                  setNewProduct({ 
+                    ...newProduct, 
+                    imageFile: file,
+                    imageUrl: URL.createObjectURL(file)
+                  })
                 }
               }}
             />
