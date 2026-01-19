@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { CartModal } from "@/components/cart-modal"
 import { SignInModal } from "@/components/sign-in-modal"
 import { UserNotifications } from "@/components/user-notifications"
-import { cloudStorage } from "@/lib/cloud-storage"
 import { useRouter } from "next/navigation"
 
 interface Product {
@@ -107,14 +106,24 @@ export default function HomePage() {
 
   const loadProducts = async () => {
     try {
-      const data = await cloudStorage.getProducts()
+      console.log("[v0] Fetching products from API...")
+      const response = await fetch("/api/products")
+      if (!response.ok) throw new Error("Failed to fetch products")
+      const data = await response.json()
+      
       const products = (data as any[]).map((p) => ({
-        ...p,
-        status: p.status || (p.inStock ? "in_stock" : "out_of_stock"),
+        sku: p.sku || p.id || "",
+        name: p.name || "",
+        price: Number(p.price) || 0,
+        desc: p.desc || p.description || "",
+        status: (p.status || "in_stock") as "in_stock" | "out_of_stock" | "coming_soon",
+        imageUrl: p.imageUrl || p.image_url || p.image,
       }))
+      
+      console.log("[v0] Successfully fetched", products.length, "products from API")
       setProducts(products)
     } catch (err) {
-      console.error("Failed to load products:", err)
+      console.error("[v0] Failed to load products:", err)
       setProducts([])
     } finally {
       setLoading(false)
